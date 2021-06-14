@@ -1,43 +1,53 @@
 package main
 
 import (
+	"github.com/FirdavsMF/gosql/pkg/security"
+	"github.com/FirdavsMF/gosql/pkg/customers"
+	"github.com/FirdavsMF/gosql/cmd/app"
 	"context"
-	"github.com/FirdavsMF/crud/cmd/app"
-	"github.com/FirdavsMF/crud/pkg/customers"
-	"github.com/gorilla/mux"
-	"github.com/jackc/pgx/v4/pgxpool"
-	"go.uber.org/dig"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"time"
-)
 
-const (
-	HOST = "0.0.0.0"
-	PORT = "9999"
+	
+	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v4/pgxpool"
+	"go.uber.org/dig"
 )
 
 func main() {
+	host := "0.0.0.0"
+	port := "9999"
+
 	dsn := "postgres://app:pass@localhost:5432/db"
-	if err := execute(HOST, PORT, dsn); err != nil {
+
+	if err := execute(host, port, dsn); err != nil {
+		log.Print(err)
 		os.Exit(1)
 	}
 }
 
-func execute(server, port, dsn string) (err error) {
+func execute(host, port, dsn string) (err error) {
 	deps := []interface{}{
 		app.NewServer,
 		mux.NewRouter,
-		customers.NewService,
 		func() (*pgxpool.Pool, error) {
-			connCtx, _ := context.WithTimeout(context.Background(), time.Second*5)
-			return pgxpool.Connect(connCtx, dsn)
+			connCtx,err:=context.WithTimeout(context.Background(),time.Second*5)
+			if err != nil {
+				log.Print(err)
+			}
+			return pgxpool.Connect(connCtx,dsn)
+			// connCtx, _ := context.WithTimeout(context.Background(), time.Second * 5)
+			// return pgxpool.Connect(connCtx, dsn)
 		},
-		func(serverHandler *app.Server) *http.Server {
+		customers.NewService,
+		security.NewService,
+		func(server *app.Server) *http.Server {
 			return &http.Server{
-				Addr:    net.JoinHostPort(server, port),
-				Handler: serverHandler,
+				Addr:    net.JoinHostPort(host, port),
+				Handler: server,
 			}
 		},
 	}
@@ -50,10 +60,14 @@ func execute(server, port, dsn string) (err error) {
 		}
 	}
 
-	err = container.Invoke(func(app *app.Server) { app.Init() })
+	err = container.Invoke(func(server *app.Server) { 
+		server.Init() 
+	})
 	if err != nil {
 		return err
 	}
 
-	return container.Invoke(func(s *http.Server) error { return s.ListenAndServe() })
+	return container.Invoke(func(s *http.Server) error { 
+		return s.ListenAndServe() 
+	})
 }
